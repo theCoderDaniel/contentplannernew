@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Content Planner</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="main-header">
+        <h1>My Content Planner</h1>
+    </div>
+    <main>
+        <section class="videoideen">
+            <div class="controls">
+                <select id="filterStatus">
+                    <option value="Alle">Alle</option>
+                    <option value="Geplant">Geplant</option>
+                    <option value="In Bearbeitung">In Bearbeitung</option>
+                    <option value="Veröffentlicht">Veröffentlicht</option>
+                </select>
+                <input type="text" id="searchInput" placeholder="Suche nach Ideen...">
+                <button id="openFormButton">+</button>
+            </div>
+            <div class="import-export-controls">
+                <button id="exportBtn" class="action-button export-button">Exportieren</button>
+                <button id="importBtn" class="action-button import-button">Importieren</button>
+                <input type="file" id="importInput" accept=".json" style="display: none;">
+            </div>
+            <div class="liste">
+                <table id="ideas-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Videoidee</th>
+                            <th>Status</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Ideas will be dynamically added here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <!-- Overlay für neues Ideenformular -->
+        <div id="overlay" class="overlay">
+            <div id="form-popup" class="form-popup">
+                <h2>Neue Idee hinzufügen</h2>
+                <input type="text" id="idea" placeholder="Idee">
+                <input type="text" id="link" placeholder="Link">
+                <button id="addButton">Hinzufügen</button>
+                <button id="cancelButton" class="cancel-button">Abbrechen</button>
+            </div>
+        </div>
+        <!-- Overlay für "Idee ansehen" -->
+        <div id="viewOverlay" class="overlay">
+            <div id="view-popup" class="form-popup">
+                <h2>Idee ansehen</h2>
+                <p id="viewTitle"></p>
+                <p id="publishDate" class="publish-date"></p>
+                <button id="viewLinkButton">Zum Video</button>
+                <button id="closeViewButton" class="cancel-button">Abbrechen</button>
+            </div>
+        </div>
+    </main>
+    <script>
+        document.addEventListener('DOMContentLoaded', function(){
+            loadIdeas();
+            
+            // Event Listeners
+            document.getElementById('openFormButton').onclick = openForm;
+            document.getElementById('cancelButton').onclick = closeOverlay;
+            document.getElementById('addButton').onclick = addIdea;
+            document.getElementById('closeViewButton').onclick = closeView;
+            document.getElementById('filterStatus').onchange = loadIdeas;
+            document.getElementById('searchInput').oninput = loadIdeas;
+            
+            // Import/Export Event Listeners
+            document.getElementById('exportBtn').onclick = exportIdeas;
+            document.getElementById('importBtn').onclick = () => document.getElementById('importInput').click();
+            document.getElementById('importInput').onchange = importIdeas;
+
+            // Schließen mit Escape-Taste
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeOverlay();
+                    closeView();
+                }
+            });
+        });
+
+        function openForm() {
+            document.getElementById('overlay').style.display = 'flex';
+            document.getElementById('idea').focus();
+        }
+
+        function closeOverlay() {
+            document.getElementById('overlay').style.display = 'none';
+        }
+
+        function closeView() {
+            document.getElementById('viewOverlay').style.display = 'none';
+        }
+
+        function addIdea() {
+            const ideaInput = document.getElementById('idea');
+            const linkInput = document.getElementById('link');
+            const idea = ideaInput.value.trim();
+            const link = linkInput.value.trim();
+
+            if (!idea || !link) {
+                alert('Bitte füllen Sie alle Felder aus.');
+                return;
+            }
+
+            const ideas = JSON.parse(localStorage.getItem('ideas')) || [];
+            ideas.push({
+                title: idea,
+                link: link,
+                status: 'Geplant'
+            });
+            
+            localStorage.setItem('ideas', JSON.stringify(ideas));
+            ideaInput.value = '';
+            linkInput.value = '';
+            closeOverlay();
+            loadIdeas();
+        }
+
+        function loadIdeas() {
+            const ideas = JSON.parse(localStorage.getItem('ideas')) || [];
+            const filter = document.getElementById('filterStatus').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const tableBody = document.querySelector('#ideas-table tbody');
+            tableBody.innerHTML = '';
+            // Filtere Ideen anhand des Status und Suchbegriffs
+            const filteredIdeas = ideas.filter(idea => {
+                if(filter !== "Alle" && idea.status !== filter) return false;
+                if(search && idea.title.toLowerCase().indexOf(search) === -1) return false;
+                return true;
+            });
+            filteredIdeas.forEach((idea, idx) => {
+                // Ermittle den tatsächlichen Index in der Original-Liste
+                const origIndex = ideas.indexOf(idea);
+                const row = document.createElement('tr');
+                row.className = `status-${idea.status.toLowerCase().replace(' ', '-')}`;
+                row.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td>${idea.title}</td>
+                    <td>
+                        <select onchange="updateStatus(${origIndex}, this.value)">
+                            <option value="Geplant" ${idea.status === 'Geplant' ? 'selected' : ''}>Geplant</option>
+                            <option value="In Bearbeitung" ${idea.status === 'In Bearbeitung' ? 'selected' : ''}>In Bearbeitung</option>
+                            <option value="Veröffentlicht" ${idea.status === 'Veröffentlicht' ? 'selected' : ''}>Veröffentlicht</option>
+                        </select>
+                    </td>
+                    <td class="actions">
+                        <button onclick="openView(${origIndex})">👁️</button>
+                        <button onclick="deleteIdea(${origIndex})">🗑️</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        function updateStatus(index, status) {
+            const ideas = JSON.parse(localStorage.getItem('ideas'));
+            ideas[index].status = status;
+            if (status === 'Veröffentlicht' && !ideas[index].publishDate) {
+                ideas[index].publishDate = new Date().toLocaleDateString('de-DE');
+            }
+            localStorage.setItem('ideas', JSON.stringify(ideas));
+            loadIdeas();
+        }
+        
+        function openView(index) {
+            const ideas = JSON.parse(localStorage.getItem('ideas'));
+            const idea = ideas[index];
+            document.getElementById('viewTitle').innerText = idea.title;
+            const publishDateElem = document.getElementById('publishDate');
+            if (idea.status === 'Veröffentlicht' && idea.publishDate) {
+                publishDateElem.innerText = `Veröffentlicht am: ${idea.publishDate}`;
+                publishDateElem.style.display = 'block';
+            } else {
+                publishDateElem.style.display = 'none';
+            }
+            document.getElementById('viewLinkButton').setAttribute('data-link', idea.link);
+            document.getElementById('viewOverlay').style.display = 'flex';
+        }
+        
+        function deleteIdea(index) {
+            const ideas = JSON.parse(localStorage.getItem('ideas'));
+            const title = ideas[index].title;
+            if (confirm(`Möchten Sie "${title}" wirklich löschen?`)) {
+                ideas.splice(index, 1);
+                localStorage.setItem('ideas', JSON.stringify(ideas));
+                loadIdeas();
+            }
+        }
+
+        // Export Funktion
+        function exportIdeas() {
+            const ideas = localStorage.getItem('ideas') || '[]';
+            const blob = new Blob([ideas], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'videoideen.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Import Funktion
+        function importIdeas(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const ideas = JSON.parse(e.target.result);
+                        localStorage.setItem('ideas', JSON.stringify(ideas));
+                        loadIdeas();
+                        alert('Import erfolgreich!');
+                    } catch (error) {
+                        alert('Fehler beim Import!');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+    </script>
+</body>
+</html>
